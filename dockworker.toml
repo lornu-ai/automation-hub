@@ -1,0 +1,12 @@
+# Dockworker configuration for automation-hub
+# Ensures SBOM and provenance are enabled for compliance
+
+[build]
+context = "."
+dockerfile = "Dockerfile"
+provenance = true
+sbom = true
+
+[tags]
+latest = true
+dev = true

@@ -1,0 +1,3 @@
+# Use uv for Python dependency management
+# See https://github.com/astral-sh/uv
+

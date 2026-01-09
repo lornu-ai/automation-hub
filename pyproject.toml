@@ -1,0 +1,8 @@
+[tool.uv]
+# uv is the preferred Python package manager for Lornu AI
+
+[project]
+name = "automation-hub"
+description = "Cloudflare Worker-based CI automation service with Python support."
+version = "0.1.0"
+authors = ["Lornu AI Team <engineering@lornu.ai>"]

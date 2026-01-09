@@ -1,0 +1,12 @@
+{
+  "name": "automation-hub",
+  "version": "0.1.0",
+  "description": "Cloudflare Worker-based CI automation service.",
+  "scripts": {
+    "build": "bun run tsc",
+    "azure:build": "bun run src/azure_eks_build.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
