@@ -48,8 +48,11 @@ export default {
         return await handlePullRequest(payload, env);
       }
 
-      return new Response(JSON.stringify({ message: `Event ${eventType} received but not processed.` }), {
-        status: 200,
+      return new Response(JSON.stringify({
+        status: "accepted",
+        message: `Event ${eventType} received.`
+      }), {
+        status: 202,
         headers: { "Content-Type": "application/json" }
       });
     } catch (error: any) {
@@ -63,9 +66,11 @@ export default {
 };
 
 /**
- * Verify HMAC SHA-256 signature from GitHub
+ * Verify HMAC SHA-256 signature from GitHub in a timing-safe manner
  */
 async function verifySignature(body: string, signature: string, secret: string): Promise<boolean> {
+  if (!signature || !signature.startsWith("sha256=")) return false;
+
   const encoder = new TextEncoder();
   const keyBytes = encoder.encode(secret);
   const dataBytes = encoder.encode(body);
@@ -78,15 +83,24 @@ async function verifySignature(body: string, signature: string, secret: string):
     ["sign"]
   );
 
-  const signatureBytes = await crypto.subtle.sign("HMAC", key, dataBytes);
-  const signatureHex = Array.from(new Uint8Array(signatureBytes))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
+  const signatureBuffer = await crypto.subtle.sign("HMAC", key, dataBytes);
 
-  const expectedSignature = `sha256=${signatureHex}`;
+  // Convert provided signature hex to Uint8Array
+  const providedHex = signature.slice(7);
+  if (providedHex.length !== 64) return false;
 
-  // Use a constant-time comparison or just compare strings for now
-  return signature === expectedSignature;
+  const providedBytes = new Uint8Array(providedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+
+  // Timing-safe comparison using bitwise XOR
+  if (signatureBuffer.byteLength !== providedBytes.byteLength) return false;
+
+  const a = new Uint8Array(signatureBuffer);
+  const b = providedBytes;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a[i] ^ b[i];
+  }
+  return result === 0;
 }
 
 async function handlePullRequest(payload: any, env: Env): Promise<Response> {
@@ -100,10 +114,16 @@ async function handlePullRequest(payload: any, env: Env): Promise<Response> {
 
   // Only review on opened or synchronize (new commits)
   if (action !== "opened" && action !== "synchronize") {
-    return new Response(JSON.stringify({ message: `Action ${action} ignored.` }), { status: 200 });
+    return new Response(JSON.stringify({
+      status: "ignored",
+      message: `Action ${action} ignored.`
+    }), {
+      status: 202,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 
-  console.log(`Processing PR #${prNumber} for ${repository}`);
+  console.log(`Processing PR #${prNumber} for ${repository} (Action: ${action})`);
 
   try {
     // 1. Fetch PR Diff using GitHub API
