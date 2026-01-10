@@ -1,9 +1,20 @@
 name = "automation-hub"
 
 account_id = "1d361f061ebf3d1a293900bdb815db26"
-workers_dev = true
+workers_dev = false
 main = "src/worker.ts"
 compatibility_date = "2026-01-08"
 
+routes = [
+	{ pattern = "automation-hub.stevedores.org", custom_domain = true }
+]
+
 [vars]
 AI_AGENT_ENDPOINT = "https://reviewer.lornu.ai/review"
+ACCESS_POLICY_ID = "ad4a5ec5-0346-4677-8023-f29ef33add08"
+
+[observability]
+enabled = false
+
+[build]
+command = "bun run build"
