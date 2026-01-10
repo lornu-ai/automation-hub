@@ -46,7 +46,7 @@ wrangler login
 
 # Create Hyperdrive config for Azure PostgreSQL
 npx wrangler hyperdrive create azure-registry-link \
-  --connection-string="postgresql://lornu_admin:password@lornu-prod-db.postgres.database.azure.com:5432/registry"
+  --connection-string="postgresql://lornu_admin:<YOUR_PASSWORD>@lornu-prod-db.postgres.database.azure.com:5432/registry"
 ```
 
 **Output**: You'll receive a Hyperdrive ID (e.g., `abc123def456...`)
