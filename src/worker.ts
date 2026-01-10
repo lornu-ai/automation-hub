@@ -11,8 +11,8 @@ export interface Env {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-
-    // Health check
+    console.log(`Incoming request: ${request.method} ${url.pathname} from ${request.headers.get("User-Agent")}`);
+    console.log(`Event: ${request.headers.get("X-GitHub-Event")}, Signature: ${request.headers.get("X-Hub-Signature-256") ? "Present" : "Missing"}`);
     if (url.pathname === "/healthz" || url.pathname === "/health") {
       return new Response("OK", { status: 200 });
     }
