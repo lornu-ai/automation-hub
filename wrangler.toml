@@ -6,7 +6,7 @@ main = "src/worker.ts"
 compatibility_date = "2026-01-08"
 
 routes = [
-	{ pattern = "automation.dockworker.ai", custom_domain = true }
+	{ pattern = "automation-hub.dockworker.ai", custom_domain = true }
 ]
 
 [vars]
