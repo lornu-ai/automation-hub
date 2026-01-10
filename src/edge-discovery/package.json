@@ -1,0 +1,19 @@
+{
+  "name": "lornu-edge-discovery",
+  "version": "0.1.0",
+  "description": "Cloudflare Edge Discovery Worker with Hyperdrive for Azure PostgreSQL",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.toml",
+    "deploy": "wrangler deploy --config wrangler.toml",
+    "tail": "wrangler tail --config wrangler.toml"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240125.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.38.0"
+  }
+}

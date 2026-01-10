@@ -1,17 +1,28 @@
 # automation-hub
 
-Cloudflare Worker-based CI automation service.
+Cloudflare Worker-based automation services for the Lornu AI ecosystem.
 
-- Production Worker: https://dash.cloudflare.com/1d361f061ebf3d1a293900bdb815db26/workers/services/view/automation-hub/production
-- Related Issue: https://github.com/lornu-ai/private-lornu-ai/issues/542
+## Workers
+
+This repository hosts multiple Cloudflare Workers for automation and orchestration:
+
+1. **automation-hub** (Main): CI automation service
+   - Production: https://dash.cloudflare.com/1d361f061ebf3d1a293900bdb815db26/workers/services/view/automation-hub/production
+   - Related Issue: https://github.com/lornu-ai/private-lornu-ai/issues/542
+
+2. **lornu-edge-discovery** (Edge Discovery): High-speed agent discovery service
+   - Location: `src/edge-discovery/`
+   - Uses Cloudflare Hyperdrive for Azure PostgreSQL acceleration
+   - Related Issue: https://github.com/lornu-ai/private-lornu-ai/issues/589
+   - See [src/edge-discovery/README.md](src/edge-discovery/README.md) for details
 
 ## Setup
 
-This repo is scaffolded for Cloudflare Workers using wrangler. See wrangler.toml for deployment config.
+This repo is scaffolded for Cloudflare Workers using wrangler. Each worker has its own `wrangler.toml` configuration file.
 
 ## Usage
 
-Automates CI workflows using Cloudflare Workers. Extend src/worker.ts for custom logic.
+Automates CI workflows using Cloudflare Workers. Extend `src/worker.ts` for custom logic.
 
 ### Build (with Bun)
 
