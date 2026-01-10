@@ -1,0 +1,19 @@
+name = "lornu-edge-discovery"
+main = "src/index.ts"
+compatibility_date = "2026-01-08"
+
+[vars]
+AZURE_REGION = "eastus"
+DISCOVERY_CACHE_TTL = "60"
+
+[[hyperdrive]]
+binding = "AZURE_REGISTRY"
+id = "7f7f7f7f-7f7f-7f7f-7f7f-7f7f7f7f7f7f" # Placeholder
+
+[[d1_databases]]
+binding = "EDGE_CACHE"
+database_name = "lornu-edge-discovery-cache"
+database_id = "8e8e8e8e-8e8e-8e8e-8e8e-8e8e8e8e8e8e" # Placeholder
+
+[observability]
+enabled = true
