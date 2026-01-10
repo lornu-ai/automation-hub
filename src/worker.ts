@@ -1,10 +1,8 @@
-/**
- * Cloudflare Worker for automation-hub
- * Handles GitHub webhooks and orchestrates CI/CD tasks.
- */
+import * as jose from "jose";
 
 export interface Env {
-  GITHUB_TOKEN: string;
+  GITHUB_APP_ID: string;
+  GITHUB_PRIVATE_KEY: string;
   AI_AGENT_ENDPOINT: string;
   AI_AGENT_TOKEN: string;
   WEBHOOK_SECRET?: string;
@@ -66,6 +64,37 @@ export default {
 };
 
 /**
+ * Generate a GitHub Installation Access Token (IAT)
+ */
+async function getInstallationToken(env: Env, installationId: string): Promise<string> {
+  const privateKey = await jose.importPKCS8(env.GITHUB_PRIVATE_KEY, "RS256");
+
+  const jwt = await new jose.SignJWT({})
+    .setProtectedHeader({ alg: "RS256" })
+    .setIssuedAt()
+    .setExpirationTime("10m")
+    .setIssuer(env.GITHUB_APP_ID)
+    .sign(privateKey);
+
+  const response = await fetch(`https://api.github.com/app/installations/${installationId}/access_tokens`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${jwt}`,
+      "Accept": "application/vnd.github.v3+json",
+      "User-Agent": "Lornu-Automation-Hub"
+    }
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Failed to get installation token: ${response.status} ${errorBody}`);
+  }
+
+  const data = await response.json() as { token: string };
+  return data.token;
+}
+
+/**
  * Verify HMAC SHA-256 signature from GitHub in a timing-safe manner
  */
 async function verifySignature(body: string, signature: string, secret: string): Promise<boolean> {
@@ -107,9 +136,10 @@ async function handlePullRequest(payload: any, env: Env): Promise<Response> {
   const action = payload.action;
   const prNumber = payload.pull_request?.number;
   const repository = payload.repository?.full_name;
+  const installationId = payload.installation?.id;
 
-  if (!prNumber || !repository) {
-    return new Response("Invalid PR payload", { status: 400 });
+  if (!prNumber || !repository || !installationId) {
+    return new Response("Invalid PR payload (missing PR info or installation ID)", { status: 400 });
   }
 
   // Only review on opened or synchronize (new commits)
@@ -126,10 +156,13 @@ async function handlePullRequest(payload: any, env: Env): Promise<Response> {
   console.log(`Processing PR #${prNumber} for ${repository} (Action: ${action})`);
 
   try {
+    // 0. Get dynamic installation token for this repo
+    const githubToken = await getInstallationToken(env, installationId.toString());
+
     // 1. Fetch PR Diff using GitHub API
     const diffResponse = await fetch(`https://api.github.com/repos/${repository}/pulls/${prNumber}`, {
       headers: {
-        "Authorization": `token ${env.GITHUB_TOKEN}`,
+        "Authorization": `token ${githubToken}`,
         "Accept": "application/vnd.github.v3.diff",
         "User-Agent": "Lornu-Automation-Hub"
       }
@@ -165,7 +198,7 @@ async function handlePullRequest(payload: any, env: Env): Promise<Response> {
     const commentResponse = await fetch(`https://api.github.com/repos/${repository}/issues/${prNumber}/comments`, {
       method: "POST",
       headers: {
-        "Authorization": `token ${env.GITHUB_TOKEN}`,
+        "Authorization": `token ${githubToken}`,
         "Accept": "application/vnd.github.v3+json",
         "Content-Type": "application/json",
         "User-Agent": "Lornu-Automation-Hub"
