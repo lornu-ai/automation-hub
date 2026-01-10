@@ -1,6 +1,9 @@
 name = "automation-hub"
-type = "javascript"
+
 account_id = "1d361f061ebf3d1a293900bdb815db26"
 workers_dev = true
 main = "src/worker.ts"
 compatibility_date = "2026-01-08"
+
+[vars]
+AI_AGENT_ENDPOINT = "https://reviewer.lornu.ai/review"

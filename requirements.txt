@@ -1,3 +1,7 @@
-# Use uv for Python dependency management
-# See https://github.com/astral-sh/uv
-
+fastapi==0.115.6
+uvicorn==0.34.0
+httpx==0.28.1
+pydantic==2.10.5
+python-multipart==0.0.6
+openai==1.59.3
+anthropic==0.42.0
