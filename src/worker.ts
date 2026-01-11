@@ -1,4 +1,5 @@
 import * as jose from "jose";
+import { indexAllDocuments, searchVectorize, getIndexStatus } from "./vectorize_indexer";
 
 export interface Env {
   GITHUB_APP_ID: string;
@@ -6,6 +7,11 @@ export interface Env {
   AI_AGENT_ENDPOINT: string;
   AI_AGENT_TOKEN: string;
   WEBHOOK_SECRET?: string;
+  // Issue #565: Private RAG Grounding bindings
+  PRIVATE_RAG_BUCKET: R2Bucket;
+  LORNU_VECTORIZE: VectorizeIndex;
+  AI: Ai;
+  VECTORIZE_API_TOKEN?: string;
 }
 
 export default {
@@ -15,6 +21,19 @@ export default {
     console.log(`Event: ${request.headers.get("X-GitHub-Event")}, Signature: ${request.headers.get("X-Hub-Signature-256") ? "Present" : "Missing"}`);
     if (url.pathname === "/healthz" || url.pathname === "/health") {
       return new Response("OK", { status: 200 });
+    }
+
+    // Issue #565: Vectorize/RAG API endpoints
+    if (url.pathname === "/api/vectorize/trigger" && request.method === "POST") {
+      return await handleVectorizeTrigger(request, env);
+    }
+
+    if (url.pathname === "/api/rag/search" && request.method === "POST") {
+      return await handleRagSearch(request, env);
+    }
+
+    if (url.pathname === "/api/vectorize/status" && request.method === "GET") {
+      return await handleVectorizeStatus(env);
     }
 
     // Only handle POST requests for webhooks
@@ -218,5 +237,145 @@ async function handlePullRequest(payload: any, env: Env): Promise<Response> {
   } catch (error: any) {
     console.error(`Error processing PR #${prNumber}:`, error);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+  }
+}
+
+/**
+ * Issue #565: Handle Vectorize index trigger requests
+ * Called by LibrarianAgent CronJob to rebuild the index
+ */
+async function handleVectorizeTrigger(request: Request, env: Env): Promise<Response> {
+  // Verify authorization
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Missing or invalid authorization" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const token = authHeader.slice(7);
+  if (env.VECTORIZE_API_TOKEN && token !== env.VECTORIZE_API_TOKEN) {
+    return new Response(JSON.stringify({ error: "Invalid token" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  try {
+    const body = await request.json() as { action?: string };
+    const action = body.action || "full_rebuild";
+
+    console.log(`Vectorize trigger received: action=${action}`);
+
+    if (action === "full_rebuild") {
+      const result = await indexAllDocuments(env);
+      return new Response(JSON.stringify({
+        status: "success",
+        message: "Full index rebuild completed",
+        details: result
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    return new Response(JSON.stringify({
+      status: "accepted",
+      message: `Action ${action} received`
+    }), {
+      status: 202,
+      headers: { "Content-Type": "application/json" }
+    });
+
+  } catch (error: any) {
+    console.error("Vectorize trigger error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}
+
+/**
+ * Issue #565: Handle RAG search requests
+ * Called by LibrarianAgent for semantic document search
+ */
+async function handleRagSearch(request: Request, env: Env): Promise<Response> {
+  // Verify authorization
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Missing or invalid authorization" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  const token = authHeader.slice(7);
+  if (env.VECTORIZE_API_TOKEN && token !== env.VECTORIZE_API_TOKEN) {
+    return new Response(JSON.stringify({ error: "Invalid token" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
+  try {
+    const body = await request.json() as {
+      query: string;
+      top_k?: number;
+      filter_metadata?: Record<string, string>;
+    };
+
+    if (!body.query) {
+      return new Response(JSON.stringify({ error: "Query is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    const results = await searchVectorize(
+      env,
+      body.query,
+      body.top_k || 5,
+      body.filter_metadata
+    );
+
+    return new Response(JSON.stringify({
+      status: "success",
+      results
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+
+  } catch (error: any) {
+    console.error("RAG search error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}
+
+/**
+ * Issue #565: Handle Vectorize status requests
+ * Returns current index status and statistics
+ */
+async function handleVectorizeStatus(env: Env): Promise<Response> {
+  try {
+    const status = await getIndexStatus(env);
+    return new Response(JSON.stringify({
+      status: "success",
+      index: status
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (error: any) {
+    console.error("Vectorize status error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 }

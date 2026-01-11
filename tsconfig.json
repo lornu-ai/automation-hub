@@ -9,6 +9,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "types": [
+      "@cloudflare/workers-types",
       "bun-types",
       "node"
     ]

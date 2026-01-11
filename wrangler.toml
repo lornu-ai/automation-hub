@@ -19,3 +19,19 @@ enabled = false
 
 [build]
 command = "bun run build"
+
+# Issue #565: Private RAG Grounding via R2 + Vectorize
+# R2 bucket for storing proprietary documents
+[[r2_buckets]]
+binding = "PRIVATE_RAG_BUCKET"
+bucket_name = "lornu-private-rag-prod"
+preview_bucket_name = "lornu-private-rag-dev"
+
+# Vectorize index for semantic search
+[[vectorize]]
+binding = "LORNU_VECTORIZE"
+index_name = "lornu-private-knowledge"
+
+# Cloudflare AI for embedding generation
+[ai]
+binding = "AI"
