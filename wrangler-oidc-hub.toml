@@ -1,0 +1,16 @@
+name = "oidc-hub"
+type = "javascript"
+account_id = "1d361f061ebf3d1a293900bdb815db26"
+workers_dev = true
+main = "src/oidc-hub.ts"
+compatibility_date = "2026-01-08"
+
+[env.production]
+routes = [
+  { pattern = "oidc-hub.dockworker.ai", zone_name = "dockworker.ai" }
+]
+
+# Secrets required (use `wrangler secret put <NAME>`):
+# - PRIVATE_KEY: RS256 private key in PKCS#8 format
+# - ISSUER_URL: https://oidc-hub.dockworker.ai
+# - ALLOWED_AUDIENCE: (optional) Default audience for token exchange
