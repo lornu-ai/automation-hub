@@ -25,14 +25,15 @@ export interface IndexResult {
 }
 
 export interface DocumentChunk {
-  id: string;
-  content: string;
-  metadata: {
-    source: string;
-    chunkIndex: number;
-    totalChunks: number;
-    createdAt: string;
-  };
+	id: string;
+	content: string;
+	metadata: {
+		source: string;
+		chunkIndex: number;
+		totalChunks: number;
+		createdAt: string;
+		content: string;
+	};
 }
 
 // Configuration constants
@@ -44,42 +45,45 @@ const CHARS_PER_TOKEN = 4; // rough approximation
  * Splits text into overlapping chunks for embedding
  */
 function chunkText(text: string, source: string): DocumentChunk[] {
-  const chunks: DocumentChunk[] = [];
-  const chunkSizeChars = CHUNK_SIZE * CHARS_PER_TOKEN;
-  const overlapChars = CHUNK_OVERLAP * CHARS_PER_TOKEN;
+	const chunks: DocumentChunk[] = [];
+	const chunkSizeChars = CHUNK_SIZE * CHARS_PER_TOKEN;
+	const overlapChars = CHUNK_OVERLAP * CHARS_PER_TOKEN;
+	const stepSize = chunkSizeChars - overlapChars;
 
-  let position = 0;
-  let chunkIndex = 0;
+	let position = 0;
+	let chunkIndex = 0;
 
-  while (position < text.length) {
-    const end = Math.min(position + chunkSizeChars, text.length);
-    const content = text.slice(position, end);
+	while (position < text.length) {
+		const end = Math.min(position + chunkSizeChars, text.length);
+		const content = text.slice(position, end);
 
-    // Skip empty chunks
-    if (content.trim().length > 0) {
-      chunks.push({
-        id: `${source}-chunk-${chunkIndex}`,
-        content: content.trim(),
-        metadata: {
-          source,
-          chunkIndex,
-          totalChunks: -1, // Will be updated after all chunks are created
-          createdAt: new Date().toISOString(),
-        },
-      });
-      chunkIndex++;
-    }
+		// Skip empty chunks
+		if (content.trim().length > 0) {
+			const trimmedContent = content.trim();
+			chunks.push({
+				id: `${source}-chunk-${chunkIndex}`,
+				content: trimmedContent,
+				metadata: {
+					source,
+					chunkIndex,
+					totalChunks: -1, // Will be updated after all chunks are created
+					createdAt: new Date().toISOString(),
+					content: trimmedContent,
+				},
+			});
+			chunkIndex++;
+		}
 
-    position = end - overlapChars;
-    if (position >= text.length - overlapChars) break;
-  }
+		if (end === text.length) break;
+		position += stepSize;
+	}
 
-  // Update totalChunks in metadata
-  chunks.forEach(chunk => {
-    chunk.metadata.totalChunks = chunks.length;
-  });
+	// Update totalChunks in metadata
+	chunks.forEach(chunk => {
+		chunk.metadata.totalChunks = chunks.length;
+	});
 
-  return chunks;
+	return chunks;
 }
 
 /**
@@ -241,65 +245,33 @@ export async function indexDocument(
 }
 
 /**
- * Searches the Vectorize index
+ * Searches the Vectorize index and returns enriched content
  */
 export async function searchVectorize(
-  env: Env,
-  query: string,
-  topK: number = 5,
-  filterMetadata?: Record<string, string>
-): Promise<{ id: string; score: number; metadata: Record<string, unknown> }[]> {
-  // Generate embedding for query
-  const queryEmbedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
-    text: [query],
-  }) as { data: number[][] };
+	env: Env,
+	query: string,
+	topK: number = 5,
+	filterMetadata?: Record<string, string>
+): Promise<{ id: string; score: number; source: string; content: string }[]> {
+	// Generate embedding for query
+	const queryEmbedding = await env.AI.run('@cf/baai/bge-base-en-v1.5', {
+		text: [query],
+	}) as { data: number[][] };
 
-  // Search Vectorize
-  const results = await env.LORNU_VECTORIZE.query(queryEmbedding.data[0], {
-    topK,
-    returnMetadata: 'all',
-  });
+	// Search Vectorize
+	const results = await env.LORNU_VECTORIZE.query(queryEmbedding.data[0], {
+		topK,
+		returnMetadata: true, // Request full metadata
+	});
 
-  return results.matches.map(match => ({
-    id: match.id,
-    score: match.score,
-    metadata: match.metadata as Record<string, unknown>,
-  }));
+	return results.matches.map(match => ({
+		id: match.id,
+		score: match.score,
+		source: (match.metadata?.source as string) || 'unknown',
+		content: (match.metadata?.content as string) || '',
+	}));
 }
 
-/**
- * Retrieves full document content for search results
- */
-export async function getDocumentContent(
-  env: Env,
-  searchResults: { id: string; score: number; metadata: Record<string, unknown> }[]
-): Promise<{ id: string; score: number; content: string; source: string }[]> {
-  const enrichedResults: { id: string; score: number; content: string; source: string }[] = [];
-
-  for (const result of searchResults) {
-    const source = result.metadata.source as string;
-    if (!source) continue;
-
-    const content = await readDocument(env.PRIVATE_RAG_BUCKET, source);
-    if (content) {
-      // Extract the specific chunk based on chunk index
-      const chunkIndex = result.metadata.chunkIndex as number;
-      const chunkSizeChars = CHUNK_SIZE * CHARS_PER_TOKEN;
-      const overlapChars = CHUNK_OVERLAP * CHARS_PER_TOKEN;
-      const start = chunkIndex * (chunkSizeChars - overlapChars);
-      const end = start + chunkSizeChars;
-
-      enrichedResults.push({
-        id: result.id,
-        score: result.score,
-        content: content.slice(start, end).trim(),
-        source,
-      });
-    }
-  }
-
-  return enrichedResults;
-}
 
 /**
  * Gets the current status of the Vectorize index
