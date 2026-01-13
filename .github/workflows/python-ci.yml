@@ -1,2 +1,10 @@
-# Deprecated: Python CI workflow not required
-# This repo is synced to Cloudflare; GitHub Actions workflows are disabled.
+name: python-ci-disabled
+
+on:
+  workflow_dispatch:
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CI disabled for this repo."
