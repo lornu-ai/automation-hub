@@ -1,0 +1,24 @@
+name = "lornu-edge-discovery"
+main = "index.ts"
+compatibility_date = "2026-01-09"
+compatibility_flags = ["nodejs_compat"]
+
+# Hyperdrive Binding (Accelerator for Azure PostgreSQL)
+# This creates a high-speed connection pool to Azure PostgreSQL
+# Usage: Create Hyperdrive config via CLI first, then paste the ID here
+[[hyperdrive]]
+binding = "AZURE_REGISTRY"
+id = "PASTE_YOUR_HYPERDRIVE_ID_HERE"
+# Optional: Local connection string for 'wrangler dev'
+# localConnectionString = "postgresql://user:pass@localhost:5432/registry"
+
+# D1 Binding (Edge Cache - Optional for hot cache)
+# This provides a 60-second hot cache of agent registry at the edge
+[[d1_databases]]
+binding = "EDGE_CACHE"
+database_name = "lornu-discovery-cache"
+database_id = "PASTE_YOUR_D1_ID_HERE"
+
+[vars]
+AZURE_REGION = "eastus2"
+DISCOVERY_CACHE_TTL = "60"  # Cache TTL in seconds
