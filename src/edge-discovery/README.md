@@ -47,7 +47,11 @@ wrangler login
 # Create Hyperdrive config for Azure PostgreSQL
 cd src/edge-discovery
 npx wrangler hyperdrive create azure-registry-link \
-  --connection-string="postgresql://lornu_admin:password@lornu-prod-db.postgres.database.azure.com:5432/registry"
+  --connection-string="postgresql://lornu_admin:${DB_PASSWORD}@lornu-prod-db.postgres.database.azure.com:5432/registry"
+
+# Note: Replace ${DB_PASSWORD} with your actual password, or use:
+# export DB_PASSWORD="your-secure-password"
+# npx wrangler hyperdrive create ... --connection-string="postgresql://...${DB_PASSWORD}..."
 ```
 
 **Output**: You'll receive a Hyperdrive ID (e.g., `abc123def456...`)
@@ -58,12 +62,12 @@ npx wrangler hyperdrive create azure-registry-link \
 # Create D1 database for edge caching
 npx wrangler d1 create lornu-discovery-cache
 
-# Initialize schema
+# Initialize schema (using INTEGER for efficient timestamp comparisons)
 npx wrangler d1 execute lornu-discovery-cache --command="
   CREATE TABLE IF NOT EXISTS agent_cache (
     cache_key TEXT PRIMARY KEY,
     data TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at INTEGER NOT NULL
   );
 "
 ```

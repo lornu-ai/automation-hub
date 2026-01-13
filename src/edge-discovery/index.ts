@@ -11,7 +11,7 @@
  * 
  * Endpoints:
  * - GET /discover?skill=<skill_id>: Discover agents by capability
- * - GET /register: Health check endpoint
+ * - POST /register: Agent registration (not yet implemented)
  * - GET /healthz: Worker health check
  * 
  * See Issue #589 for implementation details.
@@ -193,8 +193,9 @@ export default {
 
       try {
         // 1. Check edge cache first (D1) for instant response
+        // Note: Empty array is a valid cache hit (no agents online)
         const cachedAgents = await getCachedAgents(env, skill);
-        if (cachedAgents && cachedAgents.length > 0) {
+        if (cachedAgents !== null) {
           return new Response(
             JSON.stringify({
               agents: cachedAgents,
@@ -210,7 +211,7 @@ export default {
           );
         }
 
-        // 2. Cache miss: Query Azure via Hyperdrive
+        // 2. Cache miss (null): Query Azure via Hyperdrive
         const agents = await queryAzureRegistry(env, skill);
 
         // 3. Update edge cache in background (non-blocking)
