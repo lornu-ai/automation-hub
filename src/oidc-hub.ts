@@ -1,21 +1,49 @@
 /**
  * OIDC Sovereign Relay Hub - Cloudflare Worker
  * Endpoint: oidc-hub.dockworker.ai
- * 
+ *
  * Implements Issue #24: https://github.com/lornu-ai/dockworker.ai/issues/24
- * 
+ *
  * This Hub:
  * 1. Exposes OIDC Discovery and JWKS endpoints (which Azure/AWS/GCP will poll)
- * 2. Issues short-lived tokens when triggered by a valid secret or GitHub Action
+ * 2. Issues short-lived tokens when triggered by authenticated requests
  */
 
 import * as jose from 'jose';
 
 export interface Env {
-  // Use `wrangler secret put PRIVATE_KEY` to store a PKCS#8 or JWK private key
+  // Use `wrangler secret put PRIVATE_KEY` to store a PKCS#8 private key
   PRIVATE_KEY: string;
   ISSUER_URL: string; // e.g., "https://oidc-hub.dockworker.ai"
   ALLOWED_AUDIENCE?: string; // Optional: default audience for token exchange
+  MINT_API_KEY?: string; // Required for /mint endpoint authentication
+  KEY_ID?: string; // Optional: Key ID for JWKS (default: derived from key)
+  TOKEN_EXPIRATION?: string; // Optional: Token expiration (default: "15m")
+}
+
+// Cache for imported private key to avoid re-parsing on each request
+let cachedPrivateKey: jose.KeyLike | null = null;
+let cachedKeyId: string | null = null;
+
+async function getPrivateKey(env: Env): Promise<jose.KeyLike> {
+  if (!cachedPrivateKey) {
+    cachedPrivateKey = await jose.importPKCS8(env.PRIVATE_KEY, 'RS256');
+  }
+  return cachedPrivateKey;
+}
+
+async function getKeyId(env: Env): Promise<string> {
+  if (!cachedKeyId) {
+    if (env.KEY_ID) {
+      cachedKeyId = env.KEY_ID;
+    } else {
+      // Derive key ID from public key thumbprint for easier rotation
+      const privateKey = await getPrivateKey(env);
+      const jwk = await jose.exportJWK(privateKey);
+      cachedKeyId = await jose.calculateJwkThumbprint(jwk, 'sha256');
+    }
+  }
+  return cachedKeyId;
 }
 
 export default {
@@ -37,19 +65,21 @@ export default {
     // 2. JWKS Endpoint (Public Keys for Azure/AWS/GCP)
     if (url.pathname === '/.well-known/jwks.json') {
       try {
-        const privateKey = await jose.importPKCS8(env.PRIVATE_KEY, 'RS256');
+        const privateKey = await getPrivateKey(env);
+        const keyId = await getKeyId(env);
         const jwk = await jose.exportJWK(privateKey);
         return Response.json({
           keys: [{
             ...jwk,
-            kid: 'lornu-key-1',
+            kid: keyId,
             use: 'sig',
             alg: 'RS256'
           }]
         });
-      } catch (error) {
+      } catch {
+        // Don't expose internal error details
         return new Response(
-          JSON.stringify({ error: 'Failed to generate JWKS', details: String(error) }),
+          JSON.stringify({ error: 'Failed to generate JWKS' }),
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         );
       }
@@ -57,48 +87,77 @@ export default {
 
     // 3. Token Minting (The "Hub" Logic)
     if (url.pathname === '/mint' && request.method === 'POST') {
+      // Authentication: Require API key or Cloudflare Access JWT
+      const authHeader = request.headers.get('Authorization');
+      const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+      // Check for API key authentication
+      if (!env.MINT_API_KEY) {
+        return new Response(
+          JSON.stringify({ error: 'Service not configured: MINT_API_KEY required' }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!apiKey || apiKey !== env.MINT_API_KEY) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized: Invalid or missing API key' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
       try {
-        // Logic: Validate the incoming request (e.g., Check for a Service Token or GitHub JWT)
-        // For this example, we'll assume the request is pre-cleared by Cloudflare Access.
-        // In production, add proper authentication/authorization here.
+        const privateKey = await getPrivateKey(env);
+        const keyId = await getKeyId(env);
 
-        const privateKey = await jose.importPKCS8(env.PRIVATE_KEY, 'RS256');
+        // Parse request body - require explicit claims, no dangerous defaults
+        let requestBody: { subject?: string; audience?: string; claims?: Record<string, unknown> };
+        try {
+          requestBody = await request.json();
+        } catch {
+          return new Response(
+            JSON.stringify({ error: 'Invalid request body: Expected JSON' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
 
-        // Extract claims from request body if provided, otherwise use defaults
-        let customClaims: Record<string, any> = {
-          is_charles: true,
-          environment: 'develop',
-          roles: ['admin']
+        // Validate required fields
+        if (!requestBody.subject) {
+          return new Response(
+            JSON.stringify({ error: 'Missing required field: subject' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Build claims without dangerous defaults (no admin role)
+        const customClaims: Record<string, unknown> = {
+          ...requestBody.claims,
         };
 
-        try {
-          const body = await request.json();
-          if (body.claims) {
-            customClaims = { ...customClaims, ...body.claims };
-          }
-          if (body.subject) {
-            customClaims.sub = body.subject;
-          }
-          if (body.audience) {
-            customClaims.aud = body.audience;
-          }
-        } catch {
-          // Use default claims if body parsing fails
+        const expiration = env.TOKEN_EXPIRATION || '15m';
+        const audience = requestBody.audience || env.ALLOWED_AUDIENCE;
+
+        if (!audience) {
+          return new Response(
+            JSON.stringify({ error: 'Missing required field: audience (or set ALLOWED_AUDIENCE)' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
         }
 
         const jwt = await new jose.SignJWT(customClaims)
-          .setProtectedHeader({ alg: 'RS256', kid: 'lornu-key-1' })
+          .setProtectedHeader({ alg: 'RS256', kid: keyId })
           .setIssuedAt()
           .setIssuer(env.ISSUER_URL)
-          .setAudience(customClaims.aud || env.ALLOWED_AUDIENCE || 'api://AzureADTokenExchange')
-          .setSubject(customClaims.sub || 'repo:lornu-ai/private-lornu-ai:ref:refs/heads/develop')
-          .setExpirationTime('1h')
+          .setAudience(audience)
+          .setSubject(requestBody.subject)
+          .setExpirationTime(expiration)
           .sign(privateKey);
 
-        return Response.json({ id_token: jwt, token_type: 'Bearer' });
-      } catch (error) {
+        return Response.json({ id_token: jwt, token_type: 'Bearer', expires_in: expiration });
+      } catch {
+        // Don't expose internal error details
         return new Response(
-          JSON.stringify({ error: 'Token minting failed', details: String(error) }),
+          JSON.stringify({ error: 'Token minting failed' }),
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         );
       }
