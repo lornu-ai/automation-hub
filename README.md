@@ -2,16 +2,54 @@
 
 Cloudflare Worker-based CI automation service.
 
+## Workers
+
+### automation-hub (CI Automation)
 - Production Worker: https://dash.cloudflare.com/1d361f061ebf3d1a293900bdb815db26/workers/services/view/automation-hub/production
 - Related Issue: https://github.com/lornu-ai/private-lornu-ai/issues/542
+- Configuration: `wrangler.toml`
+
+### oidc-hub (OIDC Identity Provider)
+- Endpoint: `oidc-hub.dockworker.ai`
+- Related Issue: https://github.com/lornu-ai/dockworker.ai/issues/24
+- Configuration: `wrangler-oidc-hub.toml`
+
+The OIDC hub provides:
+1. **OIDC Discovery** endpoint (`/.well-known/openid-configuration`)
+2. **JWKS** endpoint (`/.well-known/jwks.json`) for public key distribution
+3. **Token Minting** endpoint (`/mint`) for issuing short-lived JWT tokens
 
 ## Setup
 
-This repo is scaffolded for Cloudflare Workers using wrangler. See wrangler.toml for deployment config.
+This repo is scaffolded for Cloudflare Workers using wrangler. See `wrangler.toml` and `wrangler-oidc-hub.toml` for deployment configs.
 
 ## Usage
 
-Automates CI workflows using Cloudflare Workers. Extend src/worker.ts for custom logic.
+### CI Automation Worker
+
+Automates CI workflows using Cloudflare Workers. Extend `src/worker.ts` for custom logic.
+
+### OIDC Hub Worker
+
+Sovereign OIDC identity provider for multi-cloud authentication (Azure/AWS/GCP).
+
+**Deployment:**
+```bash
+# Set required secrets
+wrangler secret put PRIVATE_KEY --config wrangler-oidc-hub.toml
+wrangler secret put ISSUER_URL --config wrangler-oidc-hub.toml
+wrangler secret put ALLOWED_AUDIENCE --config wrangler-oidc-hub.toml  # Optional
+
+# Deploy
+wrangler deploy --config wrangler-oidc-hub.toml
+```
+
+**Generate Private Key:**
+```bash
+openssl genrsa -out private.pem 2048
+openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in private.pem -out private-pkcs8.pem
+wrangler secret put PRIVATE_KEY --config wrangler-oidc-hub.toml < private-pkcs8.pem
+```
 
 ### Build (with Bun)
 
